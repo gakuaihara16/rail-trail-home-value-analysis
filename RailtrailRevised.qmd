@@ -1,0 +1,406 @@
+---
+title: "Exploring the Association between Rail-Trail Proximity and Home-Values"
+author: "Gaku Aihara, Richard Jiang"
+format: 
+  pdf:
+    geometry: margin=0.75in
+    include-in-header: 
+      text: |
+        \usepackage{float}
+        \floatplacement{table}{H}
+        \usepackage{setspace}
+        \setstretch{0.95}
+        \usepackage{parskip}
+        \setlength{\parskip}{0.4em}
+editor: source
+---
+
+```{r, echo=F, message=F, warning=F}
+library(tidyverse)
+library(gt)
+library(gtsummary) # for creating nice tables
+# load additional libraries and data here 
+
+library(ggplot2)
+library(knitr)
+library(kableExtra)
+library(patchwork)
+
+knitr::opts_chunk$set(fig.pos = "H")
+
+# uploading dataset
+railtrail_df <- read.csv("Rail.trails.csv")
+
+important_all <- railtrail_df |> 
+  select(acre, adj2007, distance, squarefeet, garage_spaces, bedrooms, zip, latitude, longitude, walkscore)
+
+important_all$bedrooms <- as.factor(important_all$bedrooms)
+important_all$garage_spaces <- as.factor(important_all$garage_spaces)
+important_all$zip <- as.factor(important_all$zip)
+
+important_all<- important_all |> 
+  mutate(garage_spaces = fct_collapse(garage_spaces, "2+" = c(2, 4)),
+         bedrooms = fct_collapse(bedrooms,
+      "1-2" = c("1", "2"),
+      "5+" = c("5", "6")
+    ))
+  
+important_all$adj2007 <- log(important_all$adj2007)
+```
+
+# Introduction
+Does living closer to a rail trail relate to higher home values? This question matters for our client, Acme Homes, LLC, who build and sell homes and want to identify locations that maximize property resale value. We hypothesize that homes farther from rail-trail entrances tend to have lower estimated home values, accounting for other housing characteristics.
+
+To investigate this question, we analyze a dataset provided for this course containing information on Northampton, Massachusetts in 2007. Using a multiple linear regression, we examine the association between distance to the nearest rail-trail entrance and estimated home value, while accounting for factors including house size, number of beds, garage capacity, ZIP code, and walkability. 
+
+Our results show that distance to the rail trail was significantly and negatively associated with home value. Each additional mile of distance away from the rail trail was associated with an estimated 4.5% decrease in home value, holding home size, garage capacity, bedroom count, ZIP code, and walkability constant.
+
+# Data
+
+The dataset contains information on 104 homes sold in Northampton, Massachusetts in 2007. Our response variable is the estimated home value in 2007, adjusted to 2014 dollars and measured in thousands of dollars. Our primary explanatory variable is distance to the nearest rail-trail entrance, measured in miles.
+
+We also consider other housing and neighborhood characteristics that may be related to home values. Housing characteristics include house size (in thousands of square feet), property size (in acres), number of bedrooms, and number of garage spaces. Neighborhood characteristics include ZIP code, Walk Score, and Bike Score. Walk Score and Bike Score measure how accessible an area is for walking and biking, respectively, on a scale from 0 to 100, with higher scores indicating greater accessibility. The homes are located in two ZIP codes: 01060 (Northampton) and 01062 (Florence).
+
+
+
+```{r,echo=FALSE, include=FALSE}
+#| message: false
+#| warning: false
+
+
+var_table <- data.frame(
+  Variable = c("housenum", "adj1998", "adj2007", "adj2011",
+               "price1998", "price2007", "price2011", "price2014",
+               "distance", "acre", "bedrooms", "bikescore",
+               "walkscore", "garage_spaces", "latitude", "longitude",
+               "squarefeet", "streetname", "streetno", "zip"),
+  Type = c(
+    "integer",
+    "numeric (continuous)",
+    "numeric (continuous)",
+    "numeric (continuous)",
+    "numeric (continuous)",
+    "numeric (continuous)",
+    "numeric (continuous)",
+    "numeric (continuous)",
+    "numeric (continuous)",
+    "numeric (continuous)",
+    "numeric (discrete)",
+    "numeric (discrete)",
+    "numeric (discrete)",
+    "numeric (discrete)",
+    "numeric (continuous)",
+    "numeric (continuous)",
+    "numeric (continuous)",
+    "categorical (nominal)",
+    "categorical (nominal)",
+    "categorical (nominal)"
+  ),
+  Description = c(
+    "A unique number for each house",
+    "Zillow's estimated value for the home in 1998, in thousands of 2014 dollars",
+    "Zillow's estimated value for the home in 2007, in thousands of 2014 dollars",
+    "Zillow's estimated value for the home in 2011, in thousands of 2014 dollars",
+    "Zillow's estimated value for the home in 1998, in thousands of dollars",
+    "Zillow's estimated value for the home in 2007, in thousands of dollars",
+    "Zillow's estimated value for the home in 2011, in thousands of dollars",
+    "Zillow's estimated value for the home in 2014, in thousands of dollars",
+    "Distance (miles) to the nearest entry to the rail trail network. The smaller the number, the closer it is to the rail trail",
+    "Number of acres of property.$X<0.56$ as the data excludes lots any larger than that",
+    "How many bedrooms the home has",
+    "Bike friendliness of the area, estimated by WalkScore.com. 0-100 scale, where 100 indicates high bike-friendliness, such as flat terrain and good bike lanes. Bikscore awards points on existing infrastructure for bike friendliness.",
+    "Walkability of the area, estimated by WalkScore.com. 0-100 scale, where 100 indicates high walkability, so most daily tasks can be done without a car. Walkscore awards points on distance from amenities by walking (no points for >30 minute).",
+    "Number of garage parking spaces (0-4)",
+    "House's latitude, value should fall within the geographic location of Northampton",
+    "House's longitude, value should fall within the geographic location of Northampton",
+    "Square footage of the home's interior finished space (in thousands of square feet)",
+    "Name of the street the house is on",
+    "House number on the street",
+    "ZIP code of the house (leading 0 omitted). 1060 is Northampton, MA; 1062 is Florence, MA"
+  )
+)
+
+kable(var_table, booktabs = TRUE, align = "lll",
+      col.names = c("Variable", "Type", "Description")) %>%
+  kable_styling(latex_options = c("HOLD_position", "scale_down"),
+                font_size = 10, full_width = FALSE) %>%
+  column_spec(1, bold = TRUE, width = "0.9in") %>%
+  column_spec(2, width = "0.9in") %>%
+  column_spec(3, width = "3.3in")
+```
+
+# EDA
+
+We first examine the distributions of estimated home values and distance to the nearest rail-trail entrance. As shown in Figure 1, home values ranged from $162,600 to $798,600 in 2014 dollars, with a median of \$303,700. Most homes were valued between \$200,000 and \$400,000, although a few had substantially higher estimated values. The distribution was right-skewed, with a small number of particularly expensive homes. We consider using a log transformation of home value in our regression analysis to examine proportional differences in estimated values.
+
+```{r}
+#| echo: false
+#| fig.width: 9
+#| fig.height: 3.5
+#| message: false
+#| warning: false
+#| fig.cap: "Distribution of 2007 estimated home value (left) and its log transformation (right) v."
+
+# adj2007 histogram
+p1 <- ggplot(railtrail_df, aes(x = adj2007)) +
+  geom_histogram(bins = 20, fill = "lightblue", alpha = 0.7, color = "white") +
+  labs(x = "Home value ($1000s, 2014$)",
+       y = "Number of Homes") +
+  theme_minimal()
+
+# log(adj2007) histogram
+p2 <- ggplot(railtrail_df, aes(x = log(adj2007))) +
+  geom_histogram(bins = 20, fill = "lightblue", alpha = 0.7, color = "white") +
+  labs(x = "Log home value ($1000s, 2014$)",
+       y = "Number of Homes") +
+  theme_minimal()
+
+p1 + p2
+
+```
+
+Distance to the nearest rail-trail entrance ranged from 0.04 to 3.98 miles, with a median of 0.76 miles. Figure 2 shows that most homes were located within one mile of a rail-trail entrance, while relatively few were more than three miles away. This indicates that the dataset contains more homes relatively close to the rail trail than farther away.
+
+```{r}
+#| echo: false
+#| fig.width: 9
+#| fig.height: 3.5
+#| message: false
+#| warning: false
+#| fig.cap: "Distribution of distance to the nearest rail-trail entrance.The majority of homes are within a mile of the rail trail."
+
+
+# distance histogram
+distance <- ggplot(railtrail_df, aes(x = distance)) +
+  geom_histogram(bins = 20, fill = "blue", alpha = 0.7, color = "white") +
+  labs(
+    x = "Distance to trail (miles)",
+    y = "Number of Homes"
+  ) + 
+  theme_minimal()
+
+
+distance
+```
+
+To examine our main research question, we next investigate the relationship between distance to the rail trail and estimated home value.
+
+```{r}
+#| echo: false
+#| fig.width: 5
+#| fig.height: 3
+#| message: false
+#| warning: false
+#| fig.cap: "There is a negative relationship between home distribution in rail trail and estimated home value, implying homes closer to the trail tend to be more desirable."
+
+
+ggplot(railtrail_df, aes(x = distance, y = log(adj2007))) +
+  geom_point(alpha = 0.6, color = "steelblue") +
+  geom_smooth(method = "loess",color = "black") +
+  labs(
+    title = "Log Home Value vs. Distance to Rail Trail",
+    x = "Distance to nearest rail trail entrance (miles)",
+    y = "Log estimated home value in 2007 (thousands of 2014 dollars)"
+  ) +
+  theme_minimal()
+```
+Figure 3 shows the relationship between the log transformed estimated home value and distance to the nearest rail trail entrance. The fitted line shows a negative association where homes farther from a trail entrance tend to have lower estimated 2007 values. The relationship seems linear but the variables are only moderately correlated, implying there are other factors aside from a home's distance to the rail trail that are associated with estimated home value.
+
+
+```{r}
+#| label: fig-accessibility
+#| fig-cap: "Relationship between Walk Score and Bike Score (left), and distance to the rail trail and Walk Score (right)."
+#| fig.width: 9
+#| fig.height: 3.5
+#| echo: false
+#| warning: false
+
+walk_bike <- ggplot(railtrail_df, aes(x = walkscore, y = bikescore)) +
+  geom_jitter(width = 0.5, height = 0.5,
+              color = "steelblue", alpha = 0.6) +
+  geom_smooth(method = "lm", se = TRUE,
+              color = "darkblue") +
+  labs(
+    x = "Walk Score (0-100)",
+    y = "Bike Score (0-100)"
+  ) +
+  theme_minimal()
+
+dist_walk <- ggplot(railtrail_df, aes(x = distance, y = walkscore)) +
+  geom_point(color = "steelblue", alpha = 0.6) +
+  geom_smooth(method = "loess", se = TRUE,
+              color = "darkblue") +
+  labs(
+    x = "Distance to Rail Trail (miles)",
+    y = "Walk Score (0-100)"
+  ) +
+  theme_minimal()
+
+walk_bike + dist_walk
+```
+
+In addition to our main variable of interest, distance to the nearest rail-trail entrance, we also consider other housing and neighborhood characteristics that may be related to home value or distance from the trail.
+
+As shown in Figure 4 (left), Walk Score and Bike Score have a strong positive relationship (r = 0.93), indicating that more walkable neighborhoods also tend to be more bike-friendly. Since these two variables are highly correlated, including both in our regression model may be unnecessary.
+
+Figure 4 (right) shows that Walk Score generally decreases as distance from the rail trail increases. Homes closer to the trail tend to be in more walkable neighborhoods, while those farther away tend to have lower Walk Scores. This is important because walkability may also be related to home value, making it a potential confounding factor when examining the relationship between rail-trail proximity and home value.
+
+
+
+
+
+```{r}
+#| label: fig-distance-zip
+#| fig-cap: "Distribution of distance to the nearest rail-trail entrance by ZIP code."
+#| echo: false
+#| warning: false
+#| fig-width: 7
+#| fig-height: 4
+
+ggplot(railtrail_df,
+       aes(x = factor(zip), y = distance)) +
+  geom_boxplot(fill = "lightblue", alpha = 0.7,
+               width = 0.5) +
+  geom_jitter(width = 0.12, alpha = 0.4,
+              color = "steelblue") +
+  scale_x_discrete(
+    labels = c("01060\n(Northampton)",
+               "01062\n(Florence)")
+  ) +
+  labs(
+    x = "ZIP Code",
+    y = "Distance to Rail Trail (miles)"
+  ) +
+  theme_minimal()
+```
+
+
+We also examine how distance to the nearest rail-trail entrance differs by ZIP code. As shown in Figure 5, homes in Northampton (01060) tend to be closer to the trail, with a median distance of approximately 0.4 miles, compared to 1.2 miles for homes in Florence (01062). Distances also vary more widely in Florence. Since ZIP code is associated with distance to the trail and may also be related to home value, it is important to consider ZIP code when examining the relationship between rail-trail proximity and home value.
+
+### Limitations
+Our dataset has a few notable limitations. First, it only includes 104 homes from two ZIP codes in Northampton, Massachusetts, and excludes properties larger than 0.56 acres and two heavily renovated homes. These restrictions may limit how well our findings can be generalized to other properties and locations.
+Additionally, the dataset does not include potentially important information such as the condition of the household, the crime rates of the neighborhood, proximity to amenities, and others. Some of these factors may be related to both home values and distance from the rail trail, making it difficult to separate the association with rail-trail proximity from other neighborhood characteristics. Finally, the data are from 2007, so our findings may not accurately reflect current housing market conditions or homebuyer preferences.
+
+# Methods
+
+### Variable Selection
+We considered several housing and neighborhood characteristics that may be related to home value or distance from the rail trail. Walk Score and Bike Score were highly correlated (r = 0.93), so we chose to include only Walk Score to avoid using two closely related measures of neighborhood accessibility.
+As shown in Figure 4, homes closer to the rail trail also tend to have higher Walk Scores. Walkability may also be related to home values, making it a potential confounding variable. However, because Walk Score is strongly associated with distance, including both variables may introduce multicollinearity and make their individual effects more difficult to estimate precisely. Latitude and longitude were removed, as they provide information about a house's geographic location, which is redundant given our main covariate distance. 
+
+```{r, echo=FALSE, include=FALSE}
+
+# ANOVA on interaction
+model_no_interaction <- lm(adj2007 ~ acre + distance + squarefeet + garage_spaces + 
+                              bedrooms + zip + walkscore, 
+                            data = important_all)
+
+model_interaction <- lm(adj2007 ~ acre + distance + squarefeet + garage_spaces + 
+                           bedrooms + zip + walkscore + distance:zip, 
+                         data = important_all)
+
+anova(model_no_interaction, model_interaction)
+```
+
+We also considered property acreage as a potential confounding variable. Our exploratory analysis showed a weak positive relationship between acreage and distance to the rail trail (r = 0.175), but no clear relationship between acreage and home value. Since acreage did not appear to explain substantial variation in home value or show strong evidence of confounding, we chose to exclude it from the final model.
+Finally, we included ZIP code to account for potential neighborhood differences in home values. Figure 5 shows that homes in Northampton (01060) tend to be closer to rail-trail entrances than those in Florence (01062). Since ZIP code may also capture differences in neighborhood characteristics associated with home value, we used it in our regression model.
+```{r, echo=FALSE, include=FALSE}
+model_no_quad <- lm(adj2007 ~ acre + distance + squarefeet + garage_spaces + 
+                       bedrooms + zip + walkscore, 
+                     data = important_all)
+
+model_quad <- lm(adj2007 ~ acre + distance + I(distance^2) + squarefeet + 
+                    garage_spaces + bedrooms + zip + walkscore, 
+                  data = important_all)
+
+anova(model_no_quad, model_quad)
+```
+
+A quadratic term for distance, `log(distance)²`, was also tested to account for a potential non-linear relationship between distance and home value. A nested F-test comparing models with and without this term found no significant improvement in fit, $F(1, 90) = 0.352, p = .555$. The quadratic term was therefore excluded, and distance was retained as a linear predictor in the final model.
+
+### Transformation 
+```{r,echo=FALSE,include=FALSE}
+model_raw_distance <- lm(log(adj2007) ~ acre + distance + squarefeet + garage_spaces + 
+                            bedrooms + zip + walkscore, 
+                          data = railtrail_df)
+
+model_log_distance <- lm(log(adj2007) ~ acre + log(distance) + squarefeet + garage_spaces + 
+                            bedrooms + zip + walkscore, 
+                          data = railtrail_df)
+
+AIC(model_raw_distance, model_log_distance)
+summary(model_raw_distance)$adj.r.squared
+summary(model_log_distance)$adj.r.squared
+```
+
+For `garage_spaces`, the variable was re-factored by combining houses with 2 and 4 garages due to small sample size. The new group is “2+”. 
+We log transformed our 2007 estimated home value due to concerns from our diagnostic plots. We used `log(adj2007)` as the response and distance as the primary covariate. 
+
+### Hypothesis Test
+We use multiple linear regression to examine whether distance to the nearest rail-trail entrance is associated with estimated home value, while accounting for other housing and neighborhood characteristics. Because the data are observational, our analysis can identify associations but cannot establish that proximity to the rail trail causes differences in home value.
+
+
+### Assumption
+```{r,echo=FALSE}
+#| echo: false
+#| fig.width: 7
+#| fig.height: 5.5
+#| fig.align: "center"
+#| message: false
+#| warning: false
+resid_check <- lm(adj2007 ~ acre + distance + squarefeet + garage_spaces + 
+                     bedrooms + zip + walkscore, data = important_all)
+
+par(mfrow = c(2, 2))
+plot(resid_check)
+
+```
+
+To test for linear model assumptions, residual plots were created between `log(adj2007)` and distance to justify using the linear model. In the Residuals vs Fitted plot, the data is shown to follow the linearity assumption. In the QQ plot, the residuals are shown to be mostly normally distributed. Some points on the right end curve upwards, indicating potential signs of heavy tails at that end. However, most residual points match their theoretical values. In the Scale-Location plot, there are noticeable signs of heteroskedasticity. There is little to no variance for points at either end, and it widens for points in the middle. Lastly, the Residuals vs Leverage plot indicates that there are no influential points to worry about. 
+
+# Results
+```{r,echo=FALSE,include=FALSE}
+results_lm <- lm(adj2007 ~ distance +squarefeet + garage_spaces + bedrooms + zip + walkscore, data = important_all)
+results_lm_summary <- summary(results_lm)
+results_lm_summary
+
+cor(important_all |> 
+      select(adj2007,acre, distance, squarefeet,walkscore))
+```
+
+
+```{r}
+#| echo: false
+#| label: tbl-my-table
+#| tbl-cap: "Linear regression predicting log(2007 home value (in $1,000s)) from distance to rail trail, home characteristics, and ZIP code"
+#| tbl-pos: "H"
+
+tbl_regression(results_lm, 
+               intercept = TRUE,
+               label = list(distance ~ "Distance to nearest rail trail (miles)",
+                            squarefeet ~ "Square footage (thousands of sq ft)",
+                            garage_spaces ~ "Garage spaces",
+                            bedrooms ~ "Number of bedrooms",
+                            zip ~ "ZIP code",
+                            walkscore ~ "Walk Score (0-100)"),
+               estimate_fun = purrr::partial(style_sigfig, digits = 3),
+               pvalue_fun = purrr::partial(style_sigfig, digits = 4)
+) %>%
+  as_kable_extra(booktabs = TRUE) %>%
+  kable_styling(latex_options = c("HOLD_position"), font_size = 9)
+```
+
+We fit a multiple linear regression of log(2007 home value) on distance to the nearest rail-trail entrance, controlling for square footage, garage spaces, number of bedrooms, ZIP code, and Walk Score. 
+
+Among homes in this sample, each additional mile of distance from the rail trail was associated with an estimated 4.5% decrease in mean home value, holding square footage, garage spaces, bedrooms, ZIP code, and Walk Score constant (95% CI [0.4%, 8.4%] decrease), $\hat{\beta}$  = -0.046, t(94) = -2.17, p = .032. This supports our hypothesis that homes farther from the rail trail carry lower estimated value.
+
+Holding distance, garage spaces, bedrooms, ZIP code, and Walk Score constant, each additional 1,000 square feet of finished living space was associated with an estimated 50.4% increase in mean home value (95% CI [39.3%, 62.5%]), $\hat{\beta}$  = 0.41, t(94) = 10.52, p < .001.
+
+All bedroom categories, garage spaces, ZIP code, and Walk Score were not significant predictors of home value in this model (all p > .05).
+
+# Conclusion
+
+Our analysis found that distance from the nearest rail-trail entrance was negatively associated with estimated home value. Holding other housing and neighborhood characteristics constant, each additional mile from the trail was associated with an estimated 4.5% decrease in home value (95% CI: 0.4% to 8.4% decrease). For example, if a home located half a mile from the trail is valued at $500,000, our model predicts that an otherwise comparable home located one and a half miles away would be valued at approximately $477,500. This suggests that proximity to rail trails may be an important factor for Acme Homes to consider when evaluating potential development locations.
+However, our analysis has several limitations. The regression diagnostic plots suggest heteroskedasticity, meaning that the variability of the residuals is not constant. This could make our standard errors inaccurate, meaning that the reported confidence interval and p-value for distance may be less reliable. Therefore, we should interpret the statistical significance of the relationship with caution. Additionally, the dataset lacks potentially important information, such as home condition, neighborhood amenities, and crime rates. These factors may be related to both home values and distance from the trail, meaning that some of the observed association could be explained by other neighborhood characteristics. Because our data are observational, we cannot conclude that proximity to rail trails directly causes higher home values.
+Finally, our dataset only includes 104 homes from two ZIP codes in Northampton, Massachusetts, in 2007. Therefore, our findings may not apply to other locations or reflect current housing market conditions. While rail-trail proximity may be a useful factor for Acme Homes to consider, these findings do not guarantee higher home values near trails. We recommend collecting more recent, location-specific housing data before making development decisions.
+
+
