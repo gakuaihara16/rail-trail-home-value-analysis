@@ -40,8 +40,8 @@ After adjusting for square footage, garage spaces, number of bedrooms, ZIP code,
 
 | File | Description |
 | --- | --- |
-| [`RailtrailRevised.pdf`](RailtrailRevised.pdf) | Complete eight-page report, including figures, regression results, and conclusions |
-| [`RailtrailRevised.qmd`](RailtrailRevised.qmd) | Quarto source file containing the report text and R analysis code |
+| [`rail-trail-home-value-analysis.pdf`](rail-trail-home-value-analysis.pdf) | Complete eight-page report, including figures, regression results, and conclusions |
+| [`rail-trail-home-value-analysis.qmd`](rail-trail-home-value-analysis.qmd) | Quarto source file containing the report text and R analysis code |
 | [`Rail.trails.csv`](Rail.trails.csv) | Original course-provided dataset (104 homes) used by the analysis; kept in this private repository |
 | [`figures/rail-trail-vs-home-value.svg`](figures/rail-trail-vs-home-value.svg) | Recreated unadjusted scatterplot with a linear trend based on the supplied dataset |
 
@@ -52,7 +52,7 @@ The `.qmd` source uses **R** and **Quarto**, with R packages including `tidyvers
 The dataset **`Rail.trails.csv` is included** alongside the `.qmd`, so its relative file path is ready for the code. With the listed R packages and a LaTeX installation, run:
 
 ```bash
-quarto render RailtrailRevised.qmd --to pdf
+quarto render rail-trail-home-value-analysis.qmd --to pdf
 ```
 
 The PDF is the original uploaded report and can be viewed without reproducing the analysis. Rendering results can also depend on installed R / Quarto package versions.
