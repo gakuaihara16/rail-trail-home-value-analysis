@@ -1,0 +1,22 @@
+# Quarto-generated output and caches
+.quarto/
+*_files/
+*_cache/
+*.knit.md
+*.utf8.md
+
+# LaTeX build files
+*.aux
+*.log
+*.out
+*.toc
+*.synctex.gz
+*.tex
+
+# R session artifacts
+.Rhistory
+.RData
+.Rproj.user/
+
+# System files
+.DS_Store
